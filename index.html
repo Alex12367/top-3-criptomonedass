@@ -5,239 +5,221 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Top 3 Criptomonedas — Tiempo Real</title>
 
-  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
-  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- React + Babel -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/babel-standalone@6/babel.min.js"></script>
+
+  <!-- Estilos -->
+  <style>
+    body {
+      font-family: Arial;
+      background: #f1f1f4;
+      margin: 0;
+      padding: 20px;
+    }
+    h1 {
+      margin-bottom: 5px;
+    }
+    .card {
+      background: white;
+      padding: 20px;
+      border-radius: 12px;
+      width: 270px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+      margin-right: 15px;
+    }
+    .row {
+      display: flex;
+      margin-bottom: 20px;
+    }
+    .btn {
+      padding: 8px 14px;
+      margin-right: 10px;
+      border: none;
+      background: #eaeaea;
+      cursor: pointer;
+      border-radius: 6px;
+    }
+    .btn:hover {
+      background: #dcdcdc;
+    }
+    .red { color: red; }
+    .green { color: green; }
+    table {
+      width: 100%;
+      background: white;
+      padding: 10px;
+      border-radius: 12px;
+    }
+    td, th {
+      padding: 6px;
+    }
+  </style>
 </head>
 
-<body class="bg-gray-100 min-h-screen p-6">
-  <div id="app"></div>
+<body>
+  <div id="root"></div>
 
   <script type="text/babel">
 
-    // --- NUEVA API GRATIS (CoinPaprika) ---
-    const API = {
-      btc: "https://api.coinpaprika.com/v1/tickers/btc-bitcoin",
-      eth: "https://api.coinpaprika.com/v1/tickers/eth-ethereum",
-      usdt: "https://api.coinpaprika.com/v1/tickers/usdt-tether"
-    };
-
-    const STORAGE_KEY = "crypto_top3_logger_v1";
-    const POLL_INTERVAL = 10000; // 10s
-    const LOG_INTERVAL = 30 * 60 * 1000; // 30m
-
     function App() {
       const [coins, setCoins] = React.useState([]);
-      const [loading, setLoading] = React.useState(true);
+      const [history, setHistory] = React.useState({});
       const [error, setError] = React.useState(null);
-      const [history, setHistory] = React.useState(loadHistory());
+      const [loading, setLoading] = React.useState(false);
 
-      React.useEffect(() => {
-        fetchNow();
-        const poll = setInterval(fetchNow, POLL_INTERVAL);
-        logNow();
-        const logger = setInterval(logNow, LOG_INTERVAL);
+      // URLs CoinPaprika
+      const PAPRIKA_URLS = {
+        BTC: "https://api.coinpaprika.com/v1/tickers/btc-bitcoin",
+        ETH: "https://api.coinpaprika.com/v1/tickers/eth-ethereum",
+        USDT: "https://api.coinpaprika.com/v1/tickers/usdt-tether"
+      };
 
-        return () => {
-          clearInterval(poll);
-          clearInterval(logger);
-        };
-      }, []);
-
-      React.useEffect(() => {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(history));
-      }, [history]);
-
-      function loadHistory() {
-        try {
-          const raw = localStorage.getItem(STORAGE_KEY);
-          return raw ? JSON.parse(raw) : {};
-        } catch {
-          return {};
-        }
-      }
-
+      // Cargar precios
       async function fetchNow() {
         setLoading(true);
         setError(null);
+
         try {
-          const [btc, eth, usdt] = await Promise.all([
-            fetch(API.btc).then(r => r.json()),
-            fetch(API.eth).then(r => r.json()),
-            fetch(API.usdt).then(r => r.json())
-          ]);
+          const urls = Object.values(PAPRIKA_URLS);
+          const data = await Promise.all(
+            urls.map(u => fetch(u).then(r => r.json()))
+          );
 
-          const result = [
-            {
-              id: "bitcoin",
-              name: btc.name,
-              symbol: "BTC",
-              price: btc.quotes.USD.price,
-              percent24h: btc.quotes.USD.percent_change_24h,
-              market_cap: btc.quotes.USD.market_cap,
-              image: "https://cryptologos.cc/logos/bitcoin-btc-logo.png"
-            },
-            {
-              id: "ethereum",
-              name: eth.name,
-              symbol: "ETH",
-              price: eth.quotes.USD.price,
-              percent24h: eth.quotes.USD.percent_change_24h,
-              market_cap: eth.quotes.USD.market_cap,
-              image: "https://cryptologos.cc/logos/ethereum-eth-logo.png"
-            },
-            {
-              id: "tether",
-              name: usdt.name,
-              symbol: "USDT",
-              price: usdt.quotes.USD.price,
-              percent24h: usdt.quotes.USD.percent_change_24h,
-              market_cap: usdt.quotes.USD.market_cap,
-              image: "https://cryptologos.cc/logos/tether-usdt-logo.png"
-            }
-          ];
+          const formatted = data.map(c => ({
+            id: c.id,
+            name: c.name,
+            symbol: c.symbol,
+            image: "", // CoinPaprika no trae logos
+            current_price: c.quotes.USD.price,
+            percent24h: c.quotes.USD.percent_change_24h,
+            market_cap: c.quotes.USD.market_cap
+          }));
 
-          setCoins(result);
+          setCoins(formatted);
 
         } catch (e) {
-          setError("No se pudieron obtener los datos.");
+          setError(e.message);
         }
+
         setLoading(false);
       }
 
+      // Guardar registro manual o automático
       function logNow() {
         if (!coins.length) return;
         const ts = new Date().toISOString();
 
-        const entries = coins.map((c) => ({
+        const entries = coins.map(c => ({
           id: c.id,
           name: c.name,
           symbol: c.symbol,
           timestamp: ts,
-          price: c.price,
+          price: c.current_price,
           percent24h: c.percent24h,
-          market_cap: c.market_cap,
+          market_cap: c.market_cap
         }));
 
-        setHistory((prev) => {
-          const newHist = { ...prev };
-          entries.forEach((e) => {
-            if (!newHist[e.id]) newHist[e.id] = [];
-            newHist[e.id] = [e, ...newHist[e.id]];
+        setHistory(prev => {
+          const h = { ...prev };
+          entries.forEach(e => {
+            if (!h[e.id]) h[e.id] = [];
+            h[e.id] = [e, ...h[e.id]];
           });
-          return newHist;
+          return h;
         });
       }
 
-      function exportCSV() {
-        const header = "coin,id,symbol,timestamp,price,percent24h,market_cap";
-        const rows = [header];
+      // Autoactualizar precios cada 10s
+      React.useEffect(() => {
+        fetchNow();
+        const t = setInterval(fetchNow, 10000);
+        return () => clearInterval(t);
+      }, []);
 
-        Object.values(history).forEach((list) => {
-          list.forEach((e) => {
-            rows.push(`${e.name},${e.id},${e.symbol},${e.timestamp},${e.price},${e.percent24h},${e.market_cap}`);
+      // Autoguardar cada 30 minutos
+      React.useEffect(() => {
+        const t = setInterval(logNow, 30 * 60 * 1000);
+        return () => clearInterval(t);
+      }, [coins]);
+
+      function exportCSV() {
+        let csv = "id,name,symbol,timestamp,price,percent24h,market_cap\n";
+        
+        Object.values(history).forEach(arr => {
+          arr.forEach(r => {
+            csv += `${r.id},${r.name},${r.symbol},${r.timestamp},${r.price},${r.percent24h},${r.market_cap}\n`;
           });
         });
 
-        const blob = new Blob([rows.join("\n")], { type: "text/csv" });
+        const blob = new Blob([csv], { type: "text/csv" });
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
-        a.download = "crypto_top3_history.csv";
+        a.download = "historial.csv";
         a.click();
-        URL.revokeObjectURL(url);
-      }
-
-      function clearHistory() {
-        if (!confirm("¿Borrar historial?")) return;
-        setHistory({});
-        localStorage.removeItem(STORAGE_KEY);
       }
 
       return (
-        <div className="max-w-5xl mx-auto">
-          <h1 className="text-3xl font-bold mb-4">Top 3 Criptomonedas — Tiempo Real</h1>
-          <p className="mb-4 text-gray-700">Actualiza cada 10s · Guarda registro cada 30m</p>
+        <div>
+          <h1>Top 3 Criptomonedas — Tiempo Real</h1>
+          <p>Actualiza cada 10s • Guarda registro cada 30m</p>
 
-          <div className="flex gap-3 mb-6">
-            <button onClick={logNow} className="px-3 py-2 border rounded">Registrar ahora</button>
-            <button onClick={exportCSV} className="px-3 py-2 border rounded">Exportar CSV</button>
-            <button onClick={clearHistory} className="px-3 py-2 border rounded text-red-600">Borrar historial</button>
+          <button className="btn" onClick={logNow}>Registrar ahora</button>
+          <button className="btn" onClick={exportCSV}>Exportar CSV</button>
+
+          {error && <p style={{color:"red"}}>{error}</p>}
+
+          <div className="row">
+            {coins.map(c => (
+              <div className="card" key={c.id}>
+                <h2>{c.name}</h2>
+                <p><b>${c.current_price.toLocaleString()}</b></p>
+
+                <p className={c.percent24h >= 0 ? "green" : "red"}>
+                  24h: {c.percent24h.toFixed(2)}%
+                </p>
+
+                <p>Cap. mercado: ${c.market_cap.toLocaleString()}</p>
+              </div>
+            ))}
           </div>
 
-          {error && <div className="p-3 bg-red-200 mb-4">{error}</div>}
-          {loading && <div>Cargando...</div>}
+          <h2>Historial guardado</h2>
+          {Object.keys(history).length === 0 && <p>Sin datos aún.</p>}
 
-          {!loading && (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-10">
-              {coins.map((c) => (
-                <div key={c.id} className="p-4 bg-white rounded shadow">
-                  <div className="flex items-center gap-3">
-                    <img src={c.image} className="w-10 h-10 rounded-full" />
-                    <div>
-                      <h2 className="font-semibold">{c.name}</h2>
-                      <p className="text-xs text-gray-500 uppercase">{c.symbol}</p>
-                    </div>
-                  </div>
-
-                  <div className="mt-4 text-2xl font-mono">
-                    ${c.price.toLocaleString()}
-                  </div>
-
-                  <div className="text-sm">
-                    24h: <span className={c.percent24h >= 0 ? "text-green-600" : "text-red-600"}>
-                      {c.percent24h?.toFixed(2)}%
-                    </span>
-                  </div>
-
-                  <p className="text-xs text-gray-500 mt-2">
-                    Cap. mercado: ${c.market_cap.toLocaleString()}
-                  </p>
-                </div>
-              ))}
-            </div>
-          )}
-
-          <h2 className="text-xl font-bold mb-2">Historial guardado</h2>
-          {Object.keys(history).length === 0 && <p className="text-gray-600">Sin datos aún.</p>}
-
-          {Object.entries(history).map(([id, list]) => (
-            <div key={id} className="mb-6 p-4 bg-white rounded shadow">
-              <h3 className="font-semibold mb-2">
-                {list[0]?.name} ({list[0]?.symbol})
-              </h3>
-
-              <table className="w-full text-sm">
+          {Object.entries(history).map(([id, records]) => (
+            <div key={id}>
+              <h3>{id}</h3>
+              <table>
                 <thead>
-                  <tr className="border-b">
-                    <th className="py-1 text-left">Fecha</th>
-                    <th className="py-1 text-left">Precio</th>
-                    <th className="py-1 text-left">% 24h</th>
-                    <th className="py-1 text-left">Cap. mercado</th>
+                  <tr>
+                    <th>Fecha</th>
+                    <th>Precio</th>
+                    <th>24h%</th>
+                    <th>Market Cap</th>
                   </tr>
                 </thead>
-
                 <tbody>
-                  {list.map((e, i) => (
-                    <tr key={i} className="border-b">
-                      <td className="py-1">{new Date(e.timestamp).toLocaleString()}</td>
-                      <td className="py-1">${e.price.toLocaleString()}</td>
-                      <td className="py-1">{e.percent24h?.toFixed(2)}%</td>
-                      <td className="py-1">${e.market_cap.toLocaleString()}</td>
+                  {records.map((r,i) => (
+                    <tr key={i}>
+                      <td>{r.timestamp}</td>
+                      <td>${r.price.toLocaleString()}</td>
+                      <td>{r.percent24h.toFixed(2)}%</td>
+                      <td>${r.market_cap.toLocaleString()}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+              <br />
             </div>
           ))}
-
         </div>
       );
     }
 
-    ReactDOM.createRoot(document.getElementById("app")).render(<App />);
-
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
   </script>
 </body>
 </html>
