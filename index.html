@@ -1,106 +1,191 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Top 3 Criptomonedas — Tiempo Real</title>
-  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
-  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  <script src="https://cdn.tailwindcss.com"></script>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Top 3 Criptomonedas — Tiempo Real</title>
+
+<style>
+    body {
+        font-family: Arial, sans-serif;
+        background: #f2f2f2;
+        margin: 0;
+        padding: 20px;
+    }
+    h1 {
+        margin-bottom: 5px;
+    }
+    .coin-card {
+        background: white;
+        padding: 15px;
+        margin: 10px 0;
+        border-radius: 8px;
+        box-shadow: 0px 2px 5px rgba(0,0,0,0.2);
+        display: flex;
+        align-items: center;
+        gap: 15px;
+    }
+    .coin-card img {
+        width: 40px;
+        height: 40px;
+    }
+    .error {
+        color: red;
+        font-weight: bold;
+    }
+    button {
+        margin-right: 10px;
+        padding: 8px 15px;
+        font-size: 14px;
+    }
+</style>
 </head>
-<body class="bg-gray-100 min-h-screen p-6">
-  <div id="app"></div>
 
-  <script type="text/babel">
+<body>
 
-    const API_URL = "https://api.coincap.io/v2/assets?limit=3";
-    const STORAGE_KEY = "crypto_top3_logger_v1";
-    const POLL_INTERVAL = 10000;
-    const LOG_INTERVAL = 30 * 60 * 1000;
+<h1>Top 3 Criptomonedas — Tiempo Real</h1>
+<p>Actualiza cada 10s • Guarda registro cada 30m</p>
 
-    function App() {
-      const [coins, setCoins] = React.useState([]);
-      const [loading, setLoading] = React.useState(true);
-      const [error, setError] = React.useState(null);
-      const [history, setHistory] = React.useState(loadHistory());
+<button onclick="fetchNow()">Registrar ahora</button>
+<button onclick="exportCSV()">Exportar CSV</button>
 
-      React.useEffect(() => {
-        fetchNow();
-        const poll = setInterval(fetchNow, POLL_INTERVAL);
-        const logger = setInterval(logNow, LOG_INTERVAL);
+<p id="error" class="error"></p>
 
-        return () => {
-          clearInterval(poll);
-          clearInterval(logger);
-        };
-      }, []);
+<div id="coins"></div>
 
-      React.useEffect(() => {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(history));
-      }, [history]);
+<h2>Historial guardado</h2>
+<div id="history"></div>
 
-      async function fetchNow() {
-        setLoading(true);
-        setError(null);
+<script>
 
-        try {
-          const res = await fetch(API_URL);
-          if (!res.ok) throw new Error("Error HTTP: " + res.status);
+// API SIN API KEY ✔✔✔
+const API_URL = "https://api.coinpaprika.com/v1/tickers";
 
-          const json = await res.json();
-          const data = json.data;
+// historial en localStorage
+let historyData = JSON.parse(localStorage.getItem("crypto-history") || "[]");
 
-          setCoins(data);
-        } catch (e) {
-          setError(e.message);
-        }
+// mostrar historial al cargar
+renderHistory();
 
-        setLoading(false);
-      }
+/* -------------------------------------- */
+/* FETCH PRINCIPAL                        */
+/* -------------------------------------- */
+async function fetchNow() {
+    document.getElementById("error").textContent = "";
 
-      function loadHistory() {
-        try {
-          const raw = localStorage.getItem(STORAGE_KEY);
-          return raw ? JSON.parse(raw) : {};
-        } catch {
-          return {};
-        }
-      }
+    try {
+        const res = await fetch(API_URL);
 
-      function logNow() {
-        if (!coins.length) return;
-        const ts = new Date().toISOString();
+        if (!res.ok) throw new Error("Error HTTP: " + res.status);
 
-        const entries = coins.map(c => ({
-          id: c.id,
-          name: c.name,
-          symbol: c.symbol,
-          timestamp: ts,
-          price: parseFloat(c.priceUsd),
-          percent24h: parseFloat(c.changePercent24Hr),
-          market_cap: parseFloat(c.marketCapUsd)
+        let data = await res.json();
+
+        // Ordenar por market cap
+        data = data
+            .sort((a, b) => b.quotes.USD.market_cap - a.quotes.USD.market_cap)
+            .slice(0, 3);
+
+        const coins = data.map(c => ({
+            id: c.id,
+            name: c.name,
+            symbol: c.symbol,
+            image: "https://cryptocurrencyliveprices.com/img/" + c.id + ".png",
+            price: c.quotes.USD.price,
+            change24h: c.quotes.USD.percent_change_24h,
+            marketcap: c.quotes.USD.market_cap
         }));
 
-        setHistory(prev => {
-          const newHist = { ...prev };
-          entries.forEach(e => {
-            if (!newHist[e.id]) newHist[e.id] = [];
-            newHist[e.id] = [e, ...newHist[e.id]];
-          });
-          return newHist;
+        renderCoins(coins);
+
+        // guardar registro
+        const time = new Date().toLocaleString("es-ES");
+        historyData.push({ time, coins });
+        localStorage.setItem("crypto-history", JSON.stringify(historyData));
+        renderHistory();
+
+    } catch (err) {
+        document.getElementById("error").textContent = "Failed to fetch";
+    }
+}
+
+/* -------------------------------------- */
+/* MOSTRAR TOP 3                          */
+/* -------------------------------------- */
+function renderCoins(coins) {
+    const div = document.getElementById("coins");
+    div.innerHTML = "";
+
+    coins.forEach(c => {
+        div.innerHTML += `
+            <div class="coin-card">
+                <img src="${c.image}" alt="${c.name}">
+                <div>
+                    <strong>${c.name} (${c.symbol})</strong><br>
+                    Precio: $${c.price.toFixed(2)}<br>
+                    Market cap: $${c.marketcap.toLocaleString()}<br>
+                    Cambio 24h: ${c.change24h}%
+                </div>
+            </div>
+        `;
+    });
+}
+
+/* -------------------------------------- */
+/* HISTORIAL                              */
+/* -------------------------------------- */
+function renderHistory() {
+    const div = document.getElementById("history");
+    if (historyData.length === 0) {
+        div.innerHTML = "<p>Sin datos aún.</p>";
+        return;
+    }
+
+    div.innerHTML = historyData
+        .map(entry => `
+            <p><strong>${entry.time}</strong></p>
+            <ul>
+                ${entry.coins.map(c =>
+                    `<li>${c.name}: $${c.price.toFixed(2)} (${c.change24h}%)</li>`
+                ).join("")}
+            </ul>
+        `)
+        .join("<hr>");
+}
+
+/* -------------------------------------- */
+/* EXPORTAR CSV                           */
+/* -------------------------------------- */
+function exportCSV() {
+    if (historyData.length === 0) return alert("No hay datos para exportar.");
+
+    let csv = "Fecha,Moneda,Precio,Cambio24h,MarketCap\n";
+
+    historyData.forEach(entry => {
+        entry.coins.forEach(c => {
+            csv += `${entry.time},${c.name},${c.price},${c.change24h},${c.marketcap}\n`;
         });
-      }
+    });
 
-      function exportCSV() {
-        const rows = [
-          "coin,id,symbol,timestamp,price,percent24h,market_cap"
-        ];
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
 
-        Object.values(history).forEach(list => {
-          list.forEach(e => {
-            rows.push(`${e.name},${e.id},${e.symbol},${e.timestamp},${e.price},${e.percent24h},${e.market_cap}`);
-          });
-        });
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "historial_criptos.csv";
+    a.click();
+}
 
-        const blob = new Blob([rows.join("\n")], { type: "text/csv" });
+/* -------------------------------------- */
+/* AUTO FETCH                             */
+/* -------------------------------------- */
+setInterval(fetchNow, 10000);      // cada 10s
+setInterval(fetchNow, 1800000);    // cada 30 min
+
+fetchNow();
+
+</script>
+
+</body>
+</html>
+
+
