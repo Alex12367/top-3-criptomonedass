@@ -4,101 +4,54 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Top 3 Criptomonedas — Tiempo Real</title>
-
-  <!-- React + Babel -->
-  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-  <script src="https://unpkg.com/babel-standalone@6/babel.min.js"></script>
-
-  <!-- Estilos -->
-  <style>
-    body {
-      font-family: Arial;
-      background: #f1f1f4;
-      margin: 0;
-      padding: 20px;
-    }
-    h1 {
-      margin-bottom: 5px;
-    }
-    .card {
-      background: white;
-      padding: 20px;
-      border-radius: 12px;
-      width: 270px;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
-      margin-right: 15px;
-    }
-    .row {
-      display: flex;
-      margin-bottom: 20px;
-    }
-    .btn {
-      padding: 8px 14px;
-      margin-right: 10px;
-      border: none;
-      background: #eaeaea;
-      cursor: pointer;
-      border-radius: 6px;
-    }
-    .btn:hover {
-      background: #dcdcdc;
-    }
-    .red { color: red; }
-    .green { color: green; }
-    table {
-      width: 100%;
-      background: white;
-      padding: 10px;
-      border-radius: 12px;
-    }
-    td, th {
-      padding: 6px;
-    }
-  </style>
+  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
 </head>
-
-<body>
-  <div id="root"></div>
+<body class="bg-gray-100 min-h-screen p-6">
+  <div id="app"></div>
 
   <script type="text/babel">
 
+    const API_URL = "https://api.coincap.io/v2/assets?limit=3";
+    const STORAGE_KEY = "crypto_top3_logger_v1";
+    const POLL_INTERVAL = 10000;
+    const LOG_INTERVAL = 30 * 60 * 1000;
+
     function App() {
       const [coins, setCoins] = React.useState([]);
-      const [history, setHistory] = React.useState({});
+      const [loading, setLoading] = React.useState(true);
       const [error, setError] = React.useState(null);
-      const [loading, setLoading] = React.useState(false);
+      const [history, setHistory] = React.useState(loadHistory());
 
-      // URLs CoinPaprika
-      const PAPRIKA_URLS = {
-        BTC: "https://api.coinpaprika.com/v1/tickers/btc-bitcoin",
-        ETH: "https://api.coinpaprika.com/v1/tickers/eth-ethereum",
-        USDT: "https://api.coinpaprika.com/v1/tickers/usdt-tether"
-      };
+      React.useEffect(() => {
+        fetchNow();
+        const poll = setInterval(fetchNow, POLL_INTERVAL);
+        const logger = setInterval(logNow, LOG_INTERVAL);
 
-      // Cargar precios
+        return () => {
+          clearInterval(poll);
+          clearInterval(logger);
+        };
+      }, []);
+
+      React.useEffect(() => {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(history));
+      }, [history]);
+
       async function fetchNow() {
         setLoading(true);
         setError(null);
 
         try {
-          const urls = Object.values(PAPRIKA_URLS);
-          const data = await Promise.all(
-            urls.map(u => fetch(u).then(r => r.json()))
-          );
+          const res = await fetch(API_URL);
+          if (!res.ok) throw new Error("Error HTTP: " + res.status);
 
-          const formatted = data.map(c => ({
-            id: c.id,
-            name: c.name,
-            symbol: c.symbol,
-            image: "", // CoinPaprika no trae logos
-            current_price: c.quotes.USD.price,
-            percent24h: c.quotes.USD.percent_change_24h,
-            market_cap: c.quotes.USD.market_cap
-          }));
+          const json = await res.json();
+          const data = json.data;
 
-          setCoins(formatted);
-
+          setCoins(data);
         } catch (e) {
           setError(e.message);
         }
@@ -106,7 +59,15 @@
         setLoading(false);
       }
 
-      // Guardar registro manual o automático
+      function loadHistory() {
+        try {
+          const raw = localStorage.getItem(STORAGE_KEY);
+          return raw ? JSON.parse(raw) : {};
+        } catch {
+          return {};
+        }
+      }
+
       function logNow() {
         if (!coins.length) return;
         const ts = new Date().toISOString();
@@ -116,110 +77,30 @@
           name: c.name,
           symbol: c.symbol,
           timestamp: ts,
-          price: c.current_price,
-          percent24h: c.percent24h,
-          market_cap: c.market_cap
+          price: parseFloat(c.priceUsd),
+          percent24h: parseFloat(c.changePercent24Hr),
+          market_cap: parseFloat(c.marketCapUsd)
         }));
 
         setHistory(prev => {
-          const h = { ...prev };
+          const newHist = { ...prev };
           entries.forEach(e => {
-            if (!h[e.id]) h[e.id] = [];
-            h[e.id] = [e, ...h[e.id]];
+            if (!newHist[e.id]) newHist[e.id] = [];
+            newHist[e.id] = [e, ...newHist[e.id]];
           });
-          return h;
+          return newHist;
         });
       }
-
-      // Autoactualizar precios cada 10s
-      React.useEffect(() => {
-        fetchNow();
-        const t = setInterval(fetchNow, 10000);
-        return () => clearInterval(t);
-      }, []);
-
-      // Autoguardar cada 30 minutos
-      React.useEffect(() => {
-        const t = setInterval(logNow, 30 * 60 * 1000);
-        return () => clearInterval(t);
-      }, [coins]);
 
       function exportCSV() {
-        let csv = "id,name,symbol,timestamp,price,percent24h,market_cap\n";
-        
-        Object.values(history).forEach(arr => {
-          arr.forEach(r => {
-            csv += `${r.id},${r.name},${r.symbol},${r.timestamp},${r.price},${r.percent24h},${r.market_cap}\n`;
+        const rows = [
+          "coin,id,symbol,timestamp,price,percent24h,market_cap"
+        ];
+
+        Object.values(history).forEach(list => {
+          list.forEach(e => {
+            rows.push(`${e.name},${e.id},${e.symbol},${e.timestamp},${e.price},${e.percent24h},${e.market_cap}`);
           });
         });
 
-        const blob = new Blob([csv], { type: "text/csv" });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = "historial.csv";
-        a.click();
-      }
-
-      return (
-        <div>
-          <h1>Top 3 Criptomonedas — Tiempo Real</h1>
-          <p>Actualiza cada 10s • Guarda registro cada 30m</p>
-
-          <button className="btn" onClick={logNow}>Registrar ahora</button>
-          <button className="btn" onClick={exportCSV}>Exportar CSV</button>
-
-          {error && <p style={{color:"red"}}>{error}</p>}
-
-          <div className="row">
-            {coins.map(c => (
-              <div className="card" key={c.id}>
-                <h2>{c.name}</h2>
-                <p><b>${c.current_price.toLocaleString()}</b></p>
-
-                <p className={c.percent24h >= 0 ? "green" : "red"}>
-                  24h: {c.percent24h.toFixed(2)}%
-                </p>
-
-                <p>Cap. mercado: ${c.market_cap.toLocaleString()}</p>
-              </div>
-            ))}
-          </div>
-
-          <h2>Historial guardado</h2>
-          {Object.keys(history).length === 0 && <p>Sin datos aún.</p>}
-
-          {Object.entries(history).map(([id, records]) => (
-            <div key={id}>
-              <h3>{id}</h3>
-              <table>
-                <thead>
-                  <tr>
-                    <th>Fecha</th>
-                    <th>Precio</th>
-                    <th>24h%</th>
-                    <th>Market Cap</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {records.map((r,i) => (
-                    <tr key={i}>
-                      <td>{r.timestamp}</td>
-                      <td>${r.price.toLocaleString()}</td>
-                      <td>{r.percent24h.toFixed(2)}%</td>
-                      <td>${r.market_cap.toLocaleString()}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              <br />
-            </div>
-          ))}
-        </div>
-      );
-    }
-
-    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
-  </script>
-</body>
-</html>
+        const blob = new Blob([rows.join("\n")], { type: "text/csv" });
