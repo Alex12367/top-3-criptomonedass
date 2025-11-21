@@ -1,7 +1,10 @@
-<script>
+// =======================================================
+//   OBTENER DATOS DE COINGECKO (SIN API KEY)
+// =======================================================
 async function fetchCryptoData() {
     try {
-        const url = "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=bitcoin,ethereum,tether";
+        const url =
+            "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=bitcoin,ethereum,tether";
 
         const response = await fetch(url);
 
@@ -9,6 +12,7 @@ async function fetchCryptoData() {
 
         const data = await response.json();
         renderCryptos(data);
+
         return data;
 
     } catch (error) {
@@ -18,6 +22,9 @@ async function fetchCryptoData() {
     }
 }
 
+// =======================================================
+//   MOSTRAR CRIPTOMONEDAS
+// =======================================================
 function renderCryptos(cryptos) {
     const container = document.getElementById("cryptos");
     container.innerHTML = "";
@@ -26,22 +33,25 @@ function renderCryptos(cryptos) {
         container.innerHTML += `
             <div class="card">
                 <h2>${c.name} (${c.symbol.toUpperCase()})</h2>
-                <p><strong>Precio:</strong> $${c.current_price}</p>
+                <p><strong>Precio:</strong> $${c.current_price.toLocaleString()}</p>
                 <p><strong>24h:</strong> ${c.price_change_percentage_24h.toFixed(2)}%</p>
-                <p><strong>Cap. mercado:</strong> $${c.market_cap}</p>
+                <p><strong>Cap. mercado:</strong> $${c.market_cap.toLocaleString()}</p>
             </div>
         `;
     });
 }
 
-/* ---------- HISTORIAL ---------- */
-
+// =======================================================
+//   HISTORIAL EN LOCALSTORAGE
+// =======================================================
 function saveSnapshot(data) {
     let history = JSON.parse(localStorage.getItem("history") || "[]");
+
     history.push({
         date: new Date().toLocaleString(),
         data: data
     });
+
     localStorage.setItem("history", JSON.stringify(history));
     renderHistory();
 }
@@ -49,39 +59,46 @@ function saveSnapshot(data) {
 function renderHistory() {
     let history = JSON.parse(localStorage.getItem("history") || "[]");
     const container = document.getElementById("history");
-    container.innerHTML = history.length === 0
-        ? "<p>Sin datos aún.</p>"
-        : history.map(h => `
-            <div class="hist-item">
-                <strong>${h.date}</strong>
-                <pre>${JSON.stringify(h.data, null, 2)}</pre>
-            </div>
-        `).join("");
+
+    if (history.length === 0) {
+        container.innerHTML = "<p>Sin datos aún.</p>";
+        return;
+    }
+
+    container.innerHTML = history.map(h => `
+        <div class="hist-item">
+            <strong>${h.date}</strong>
+            <pre>${JSON.stringify(h.data, null, 2)}</pre>
+        </div>
+    `).join("");
 }
 
-/* --- ACTUALIZACIÓN AUTOMÁTICA --- */
-
+// =======================================================
+//   ACTUALIZACIÓN AUTOMÁTICA (10s)
+// =======================================================
 setInterval(async () => {
-    const data = await fetchCryptoData();
-}, 10000); // actualizar cada 10s
+    await fetchCryptoData();
+}, 10000);
 
-/* --- GUARDADO AUTOMÁTICO CADA 30 min --- */
-
+// =======================================================
+//   GUARDAR HISTORIAL CADA 30 MINUTOS
+// =======================================================
 setInterval(async () => {
     const data = await fetchCryptoData();
     if (data) saveSnapshot(data);
-}, 1800000);
+}, 1800000); // 30m = 1800000ms
 
-/* --- BOTÓN REGISTRAR AHORA --- */
-
+// Botón "Registrar ahora"
 document.getElementById("saveNow").onclick = async () => {
     const data = await fetchCryptoData();
     if (data) saveSnapshot(data);
 };
 
+// Cargar historial + primera actualización
 renderHistory();
 fetchCryptoData();
-</script>
+
+
 
 
 
