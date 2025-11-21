@@ -1,191 +1,87 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Top 3 Criptomonedas — Tiempo Real</title>
-
-<style>
-    body {
-        font-family: Arial, sans-serif;
-        background: #f2f2f2;
-        margin: 0;
-        padding: 20px;
-    }
-    h1 {
-        margin-bottom: 5px;
-    }
-    .coin-card {
-        background: white;
-        padding: 15px;
-        margin: 10px 0;
-        border-radius: 8px;
-        box-shadow: 0px 2px 5px rgba(0,0,0,0.2);
-        display: flex;
-        align-items: center;
-        gap: 15px;
-    }
-    .coin-card img {
-        width: 40px;
-        height: 40px;
-    }
-    .error {
-        color: red;
-        font-weight: bold;
-    }
-    button {
-        margin-right: 10px;
-        padding: 8px 15px;
-        font-size: 14px;
-    }
-</style>
-</head>
-
-<body>
-
-<h1>Top 3 Criptomonedas — Tiempo Real</h1>
-<p>Actualiza cada 10s • Guarda registro cada 30m</p>
-
-<button onclick="fetchNow()">Registrar ahora</button>
-<button onclick="exportCSV()">Exportar CSV</button>
-
-<p id="error" class="error"></p>
-
-<div id="coins"></div>
-
-<h2>Historial guardado</h2>
-<div id="history"></div>
-
 <script>
-
-// API SIN API KEY ✔✔✔
-const API_URL = "https://api.coinpaprika.com/v1/tickers";
-
-// historial en localStorage
-let historyData = JSON.parse(localStorage.getItem("crypto-history") || "[]");
-
-// mostrar historial al cargar
-renderHistory();
-
-/* -------------------------------------- */
-/* FETCH PRINCIPAL                        */
-/* -------------------------------------- */
-async function fetchNow() {
-    document.getElementById("error").textContent = "";
-
+async function fetchCryptoData() {
     try {
-        const res = await fetch(API_URL);
+        const url = "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=bitcoin,ethereum,tether";
 
-        if (!res.ok) throw new Error("Error HTTP: " + res.status);
+        const response = await fetch(url);
 
-        let data = await res.json();
+        if (!response.ok) throw new Error("HTTP " + response.status);
 
-        // Ordenar por market cap
-        data = data
-            .sort((a, b) => b.quotes.USD.market_cap - a.quotes.USD.market_cap)
-            .slice(0, 3);
+        const data = await response.json();
+        renderCryptos(data);
+        return data;
 
-        const coins = data.map(c => ({
-            id: c.id,
-            name: c.name,
-            symbol: c.symbol,
-            image: "https://cryptocurrencyliveprices.com/img/" + c.id + ".png",
-            price: c.quotes.USD.price,
-            change24h: c.quotes.USD.percent_change_24h,
-            marketcap: c.quotes.USD.market_cap
-        }));
-
-        renderCoins(coins);
-
-        // guardar registro
-        const time = new Date().toLocaleString("es-ES");
-        historyData.push({ time, coins });
-        localStorage.setItem("crypto-history", JSON.stringify(historyData));
-        renderHistory();
-
-    } catch (err) {
-        document.getElementById("error").textContent = "Failed to fetch";
+    } catch (error) {
+        document.getElementById("error").textContent = "Error al cargar datos.";
+        console.error(error);
+        return null;
     }
 }
 
-/* -------------------------------------- */
-/* MOSTRAR TOP 3                          */
-/* -------------------------------------- */
-function renderCoins(coins) {
-    const div = document.getElementById("coins");
-    div.innerHTML = "";
+function renderCryptos(cryptos) {
+    const container = document.getElementById("cryptos");
+    container.innerHTML = "";
 
-    coins.forEach(c => {
-        div.innerHTML += `
-            <div class="coin-card">
-                <img src="${c.image}" alt="${c.name}">
-                <div>
-                    <strong>${c.name} (${c.symbol})</strong><br>
-                    Precio: $${c.price.toFixed(2)}<br>
-                    Market cap: $${c.marketcap.toLocaleString()}<br>
-                    Cambio 24h: ${c.change24h}%
-                </div>
+    cryptos.forEach(c => {
+        container.innerHTML += `
+            <div class="card">
+                <h2>${c.name} (${c.symbol.toUpperCase()})</h2>
+                <p><strong>Precio:</strong> $${c.current_price}</p>
+                <p><strong>24h:</strong> ${c.price_change_percentage_24h.toFixed(2)}%</p>
+                <p><strong>Cap. mercado:</strong> $${c.market_cap}</p>
             </div>
         `;
     });
 }
 
-/* -------------------------------------- */
-/* HISTORIAL                              */
-/* -------------------------------------- */
-function renderHistory() {
-    const div = document.getElementById("history");
-    if (historyData.length === 0) {
-        div.innerHTML = "<p>Sin datos aún.</p>";
-        return;
-    }
+/* ---------- HISTORIAL ---------- */
 
-    div.innerHTML = historyData
-        .map(entry => `
-            <p><strong>${entry.time}</strong></p>
-            <ul>
-                ${entry.coins.map(c =>
-                    `<li>${c.name}: $${c.price.toFixed(2)} (${c.change24h}%)</li>`
-                ).join("")}
-            </ul>
-        `)
-        .join("<hr>");
-}
-
-/* -------------------------------------- */
-/* EXPORTAR CSV                           */
-/* -------------------------------------- */
-function exportCSV() {
-    if (historyData.length === 0) return alert("No hay datos para exportar.");
-
-    let csv = "Fecha,Moneda,Precio,Cambio24h,MarketCap\n";
-
-    historyData.forEach(entry => {
-        entry.coins.forEach(c => {
-            csv += `${entry.time},${c.name},${c.price},${c.change24h},${c.marketcap}\n`;
-        });
+function saveSnapshot(data) {
+    let history = JSON.parse(localStorage.getItem("history") || "[]");
+    history.push({
+        date: new Date().toLocaleString(),
+        data: data
     });
-
-    const blob = new Blob([csv], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "historial_criptos.csv";
-    a.click();
+    localStorage.setItem("history", JSON.stringify(history));
+    renderHistory();
 }
 
-/* -------------------------------------- */
-/* AUTO FETCH                             */
-/* -------------------------------------- */
-setInterval(fetchNow, 10000);      // cada 10s
-setInterval(fetchNow, 1800000);    // cada 30 min
+function renderHistory() {
+    let history = JSON.parse(localStorage.getItem("history") || "[]");
+    const container = document.getElementById("history");
+    container.innerHTML = history.length === 0
+        ? "<p>Sin datos aún.</p>"
+        : history.map(h => `
+            <div class="hist-item">
+                <strong>${h.date}</strong>
+                <pre>${JSON.stringify(h.data, null, 2)}</pre>
+            </div>
+        `).join("");
+}
 
-fetchNow();
+/* --- ACTUALIZACIÓN AUTOMÁTICA --- */
 
+setInterval(async () => {
+    const data = await fetchCryptoData();
+}, 10000); // actualizar cada 10s
+
+/* --- GUARDADO AUTOMÁTICO CADA 30 min --- */
+
+setInterval(async () => {
+    const data = await fetchCryptoData();
+    if (data) saveSnapshot(data);
+}, 1800000);
+
+/* --- BOTÓN REGISTRAR AHORA --- */
+
+document.getElementById("saveNow").onclick = async () => {
+    const data = await fetchCryptoData();
+    if (data) saveSnapshot(data);
+};
+
+renderHistory();
+fetchCryptoData();
 </script>
 
-</body>
-</html>
 
 
